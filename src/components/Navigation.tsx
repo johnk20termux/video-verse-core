@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Play, Search, Bookmark, Home } from "lucide-react";
+import { Film, Search, Bookmark, Home } from "lucide-react";
 
 const Navigation = () => {
   const location = useLocation();
@@ -15,10 +15,10 @@ const Navigation = () => {
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 text-xl font-bold">
-            <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center glow-primary">
-              <Play className="w-5 h-5 text-primary-foreground" fill="currentColor" />
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center glow-primary">
+              <Film className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="bg-gradient-to-r from-primary via-purple-400 to-accent bg-clip-text text-transparent font-extrabold tracking-tight">
+            <span className="bg-gradient-to-r from-primary via-orange-400 to-accent bg-clip-text text-transparent font-extrabold tracking-tight">
               VideoForever
             </span>
           </Link>
