@@ -18,8 +18,8 @@ const Navigation = () => {
             <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center glow-primary">
               <Play className="w-5 h-5 text-primary-foreground" fill="currentColor" />
             </div>
-            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              StreamHub
+            <span className="bg-gradient-to-r from-primary via-purple-400 to-accent bg-clip-text text-transparent font-extrabold tracking-tight">
+              VideoForever
             </span>
           </Link>
 
