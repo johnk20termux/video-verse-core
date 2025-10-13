@@ -5,16 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Play, Bookmark, BookmarkCheck, Star, Clock } from "lucide-react";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { toast } from "sonner";
-import { useState } from "react";
-import VideoPlayer from "@/components/VideoPlayer";
-import { searchYTSByIMDB, generateMagnetLink } from "@/services/yts";
 
 const MovieDetail = () => {
   const { id } = useParams<{ id: string }>();
   const [watchlist, setWatchlist] = useLocalStorage<number[]>("watchlist", []);
   const [watched, setWatched] = useLocalStorage<number[]>("watched", []);
-  const [isPlayerVisible, setIsPlayerVisible] = useState(false);
-  const [magnetLink, setMagnetLink] = useState<string | null>(null);
 
   const { data: movie, isLoading } = useQuery({
     queryKey: ["movie", id],
@@ -42,32 +37,6 @@ const MovieDetail = () => {
       setWatched([...watched, Number(id)]);
       toast.success("Marked as watched");
     }
-  };
-
-  const handlePlay = async () => {
-    if (!movie) return;
-
-    // Extract IMDB ID from movie data
-    const imdbId = movie.imdb_id || `tt${id}`;
-    
-    toast.loading("Finding stream...");
-    
-    const ytsMovie = await searchYTSByIMDB(imdbId);
-    
-    if (!ytsMovie || !ytsMovie.torrents || ytsMovie.torrents.length === 0) {
-      toast.error("No streams available for this movie");
-      return;
-    }
-
-    // Get the best quality torrent (prefer 1080p, fallback to 720p)
-    const torrent = ytsMovie.torrents.find(t => t.quality === "1080p") || 
-                    ytsMovie.torrents.find(t => t.quality === "720p") ||
-                    ytsMovie.torrents[0];
-
-    const magnet = generateMagnetLink(torrent.hash, movie.title);
-    setMagnetLink(magnet);
-    setIsPlayerVisible(true);
-    toast.dismiss();
   };
 
   if (isLoading) {
@@ -113,7 +82,7 @@ const MovieDetail = () => {
             </div>
 
             <div className="flex items-center gap-4 mb-6">
-              <Button size="lg" className="gap-2 glow-primary" onClick={handlePlay}>
+              <Button size="lg" className="gap-2 glow-primary">
                 <Play className="w-5 h-5" fill="currentColor" />
                 Play
               </Button>
@@ -156,15 +125,6 @@ const MovieDetail = () => {
           </div>
         </div>
       </section>
-
-      {/* Video Player Section */}
-      {isPlayerVisible && magnetLink && (
-        <section className="container mx-auto px-4 py-8">
-          <div className="max-w-6xl mx-auto">
-            <VideoPlayer magnetLink={magnetLink} title={movie.title} />
-          </div>
-        </section>
-      )}
 
       {/* Details Section */}
       <section className="container mx-auto px-4 py-12">
