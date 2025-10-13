@@ -9,6 +9,7 @@ export interface Movie {
   genre_ids: number[];
   runtime?: number;
   genres?: { id: number; name: string }[];
+  imdb_id?: string;
 }
 
 export interface Genre {
