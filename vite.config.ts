@@ -15,4 +15,12 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    exclude: ['webtorrent']
+  },
+  build: {
+    commonjsOptions: {
+      transformMixedEsModules: true
+    }
+  }
 }));
