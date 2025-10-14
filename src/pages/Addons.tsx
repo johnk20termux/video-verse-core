@@ -1,167 +1,199 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { Trash2, Plus, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
+import { Plus, Trash2, Link as LinkIcon } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
+interface Addon {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+}
 
 const Addons = () => {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
+  const [addons, setAddons] = useState<Addon[]>([]);
+  const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  const { data: addons = [] } = useQuery({
-    queryKey: ["addons", user?.id],
-    queryFn: async () => {
+  useEffect(() => {
+    fetchAddons();
+  }, []);
+
+  const fetchAddons = async () => {
+    try {
       const { data, error } = await supabase
         .from("addons")
         .select("*")
-        .eq("user_id", user?.id)
         .order("added_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user,
-  });
 
-  const addAddonMutation = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("addons").insert({
-        user_id: user?.id,
-        name,
-        url,
-      });
       if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["addons"] });
+      setAddons(data || []);
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddAddon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { error } = await supabase
+        .from("addons")
+        .insert({ user_id: user.id, name, url, enabled: true });
+
+      if (error) throw error;
+
+      toast.success("Add-on added successfully!");
       setName("");
       setUrl("");
-      toast.success("Add-on added successfully!");
-    },
-    onError: () => {
-      toast.error("Failed to add add-on");
-    },
-  });
+      setDialogOpen(false);
+      fetchAddons();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
 
-  const toggleAddonMutation = useMutation({
-    mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
+  const handleToggleAddon = async (id: string, enabled: boolean) => {
+    try {
       const { error } = await supabase
         .from("addons")
         .update({ enabled })
         .eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["addons"] });
-    },
-  });
 
-  const deleteAddonMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("addons").delete().eq("id", id);
       if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["addons"] });
-      toast.success("Add-on removed");
-    },
-  });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || !url) {
-      toast.error("Please fill in all fields");
-      return;
+      setAddons(addons.map(addon => 
+        addon.id === id ? { ...addon, enabled } : addon
+      ));
+      toast.success(enabled ? "Add-on enabled" : "Add-on disabled");
+    } catch (error: any) {
+      toast.error(error.message);
     }
-    addAddonMutation.mutate();
   };
 
-  return (
-    <div className="container mx-auto px-4 py-24">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-4xl font-bold mb-8 bg-gradient-to-r from-primary via-orange-400 to-accent bg-clip-text text-transparent">
-          Add-ons
-        </h1>
+  const handleDeleteAddon = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("addons")
+        .delete()
+        .eq("id", id);
 
-        <Card className="mb-8 border-border/50 shadow-elegant">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plus className="w-5 h-5" />
-              Add New Add-on
-            </CardTitle>
-            <CardDescription>
-              Add custom streaming sources or extensions
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Add-on Name</Label>
-                <Input
-                  id="name"
-                  placeholder="My Custom Source"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="url">Add-on URL</Label>
-                <Input
-                  id="url"
-                  type="url"
-                  placeholder="https://example.com/addon"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                />
-              </div>
-              <Button type="submit" disabled={addAddonMutation.isPending}>
-                {addAddonMutation.isPending ? "Adding..." : "Add Add-on"}
+      if (error) throw error;
+
+      setAddons(addons.filter(addon => addon.id !== id));
+      toast.success("Add-on removed");
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8 pt-24">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-4xl font-bold mb-2">Add-ons</h1>
+            <p className="text-muted-foreground">Extend functionality with custom add-ons</p>
+          </div>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Add-on
               </Button>
-            </form>
-          </CardContent>
-        </Card>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Add-on</DialogTitle>
+                <DialogDescription>
+                  Add a custom add-on by providing a name and URL
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleAddAddon} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    placeholder="My Custom Add-on"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="url">URL</Label>
+                  <Input
+                    id="url"
+                    type="url"
+                    placeholder="https://example.com/addon"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    required
+                  />
+                </div>
+                <Button type="submit" className="w-full">Add Add-on</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
 
         <div className="space-y-4">
           {addons.length === 0 ? (
-            <Card className="border-border/50">
-              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
                 <LinkIcon className="w-12 h-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No add-ons yet</p>
+                <p className="text-muted-foreground text-center">
+                  No add-ons yet. Add your first add-on to get started!
+                </p>
               </CardContent>
             </Card>
           ) : (
             addons.map((addon) => (
-              <Card key={addon.id} className="border-border/50 shadow-elegant">
-                <CardContent className="flex items-center justify-between p-6">
-                  <div className="flex-1">
-                    <h3 className="font-semibold">{addon.name}</h3>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {addon.url}
-                    </p>
+              <Card key={addon.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <CardTitle>{addon.name}</CardTitle>
+                      <CardDescription className="mt-1 break-all">
+                        {addon.url}
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <Switch
+                        checked={addon.enabled}
+                        onCheckedChange={(enabled) => handleToggleAddon(addon.id, enabled)}
+                      />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleDeleteAddon(addon.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <Switch
-                      checked={addon.enabled}
-                      onCheckedChange={(enabled) =>
-                        toggleAddonMutation.mutate({ id: addon.id, enabled })
-                      }
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => deleteAddonMutation.mutate(addon.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </CardContent>
+                </CardHeader>
               </Card>
             ))
           )}
