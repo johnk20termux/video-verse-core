@@ -14,7 +14,97 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      addons: {
+        Row: {
+          added_at: string
+          enabled: boolean
+          id: string
+          name: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          added_at?: string
+          enabled?: boolean
+          id?: string
+          name: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          added_at?: string
+          enabled?: boolean
+          id?: string
+          name?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "addons_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      watchlist: {
+        Row: {
+          added_at: string
+          id: string
+          movie_id: number
+          movie_poster: string | null
+          movie_title: string
+          user_id: string
+          watched: boolean
+        }
+        Insert: {
+          added_at?: string
+          id?: string
+          movie_id: number
+          movie_poster?: string | null
+          movie_title: string
+          user_id: string
+          watched?: boolean
+        }
+        Update: {
+          added_at?: string
+          id?: string
+          movie_id?: number
+          movie_poster?: string | null
+          movie_title?: string
+          user_id?: string
+          watched?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watchlist_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

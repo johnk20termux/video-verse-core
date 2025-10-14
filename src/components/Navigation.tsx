@@ -1,13 +1,17 @@
 import { Link, useLocation } from "react-router-dom";
-import { Sparkles, Search, Bookmark, Home } from "lucide-react";
+import { Sparkles, Search, Bookmark, Home, Puzzle, LogOut } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 
 const Navigation = () => {
   const location = useLocation();
+  const { signOut } = useAuth();
 
   const navItems = [
     { icon: Home, label: "Home", path: "/" },
     { icon: Search, label: "Browse", path: "/browse" },
     { icon: Bookmark, label: "Watchlist", path: "/watchlist" },
+    { icon: Puzzle, label: "Add-ons", path: "/addons" },
   ];
 
   return (
@@ -40,6 +44,14 @@ const Navigation = () => {
                 </Link>
               );
             })}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => signOut()}
+              className="text-muted-foreground hover:text-primary"
+            >
+              <LogOut className="w-5 h-5" />
+            </Button>
           </div>
         </div>
       </div>
