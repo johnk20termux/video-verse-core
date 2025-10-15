@@ -30,11 +30,14 @@ const fetchAddonStreams = async (
   imdbId: string
 ): Promise<StreamSource[]> => {
   try {
-    // Normalize addon URL (remove trailing slash)
-    const baseUrl = addonUrl.replace(/\/$/, "");
+    // Normalize addon URL (strip manifest paths and trailing slash)
+    const baseUrl = addonUrl
+      .trim()
+      .replace(/\/manifest(\.json)?$/i, "")
+      .replace(/\/$/, "");
     
     // Try Stremio-style addon protocol
-    const streamUrl = `${baseUrl}/stream/${type}/${imdbId}.json`;
+    const streamUrl = `${baseUrl}/stream/${type}/${encodeURIComponent(imdbId)}.json`;
     
     const response = await fetch(streamUrl, {
       method: "GET",
@@ -55,12 +58,12 @@ const fetchAddonStreams = async (
     }
 
     return data.streams
-      .filter(stream => stream.infoHash || stream.magnetUri || stream.url)
+      .filter(stream => stream.infoHash || stream.magnetUri || (stream.url?.startsWith("magnet:")))
       .map(stream => ({
         title: stream.title || stream.name || "Unknown Source",
         quality: stream.quality,
         infoHash: stream.infoHash,
-        magnetUri: stream.magnetUri,
+        magnetUri: stream.magnetUri || (stream.url && stream.url.startsWith("magnet:") ? stream.url : undefined),
         url: stream.url,
         addonName,
       }));

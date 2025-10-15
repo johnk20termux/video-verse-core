@@ -36,7 +36,7 @@ const MovieDetail = () => {
         .select("watched")
         .eq("movie_id", Number(id))
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
       if (data) {
         setIsInWatchlist(true);
