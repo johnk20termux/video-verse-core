@@ -12,8 +12,11 @@ const MovieCard = ({ movie }: MovieCardProps) => {
     ? `https://image.tmdb.org/t/p/w500${movie.poster_path}`
     : "/placeholder.svg";
 
+  const mediaType = movie.media_type || "movie";
+  const linkPath = `/${mediaType}/${movie.id}`;
+
   return (
-    <Link to={`/movie/${movie.id}`}>
+    <Link to={linkPath}>
       <Card className="group relative overflow-hidden border-0 bg-card transition-smooth hover:scale-105 hover:glow-primary">
         <div className="aspect-[2/3] overflow-hidden">
           <img

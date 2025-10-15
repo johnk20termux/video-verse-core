@@ -16,7 +16,9 @@ const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
   const [isMuted, setIsMuted] = useState(false);
   const [progress, setProgress] = useState(0);
   const [downloadSpeed, setDownloadSpeed] = useState(0);
+  const [uploadSpeed, setUploadSpeed] = useState(0);
   const [peers, setPeers] = useState(0);
+  const [downloaded, setDownloaded] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,7 +69,9 @@ const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
       torrent.on('download', () => {
         setProgress((torrent.progress * 100));
         setDownloadSpeed(torrent.downloadSpeed);
+        setUploadSpeed(torrent.uploadSpeed);
         setPeers(torrent.numPeers);
+        setDownloaded(torrent.downloaded);
       });
 
       torrent.on('error', (err: any) => {
@@ -121,6 +125,12 @@ const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
     return mb < 1 ? `${(bytes / 1024).toFixed(1)} KB/s` : `${mb.toFixed(2)} MB/s`;
   };
 
+  const formatBytes = (bytes: number) => {
+    const gb = bytes / 1024 / 1024 / 1024;
+    const mb = bytes / 1024 / 1024;
+    return gb >= 1 ? `${gb.toFixed(2)} GB` : `${mb.toFixed(0)} MB`;
+  };
+
   if (error) {
     return (
       <div className="w-full aspect-video bg-gradient-to-br from-background to-accent/10 rounded-lg flex items-center justify-center">
@@ -155,9 +165,12 @@ const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
                 />
               </div>
               <div className="text-white/80 text-sm text-center space-y-1">
-                <p>{progress.toFixed(1)}% buffered</p>
-                {downloadSpeed > 0 && <p>↓ {formatSpeed(downloadSpeed)}</p>}
-                {peers > 0 && <p>{peers} peers</p>}
+                <p>{progress.toFixed(1)}% buffered • {formatBytes(downloaded)}</p>
+                <div className="flex justify-center gap-4">
+                  {downloadSpeed > 0 && <p>↓ {formatSpeed(downloadSpeed)}</p>}
+                  {uploadSpeed > 0 && <p>↑ {formatSpeed(uploadSpeed)}</p>}
+                </div>
+                {peers > 0 && <p>👥 {peers} peer{peers !== 1 ? 's' : ''} connected</p>}
               </div>
             </div>
           )}
@@ -185,9 +198,11 @@ const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
               {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
             </Button>
 
-            {downloadSpeed > 0 && (
-              <div className="text-white/80 text-xs ml-2">
-                {formatSpeed(downloadSpeed)} • {peers} peers
+            {(downloadSpeed > 0 || uploadSpeed > 0) && (
+              <div className="text-white/80 text-xs ml-2 flex gap-2">
+                {downloadSpeed > 0 && <span>↓ {formatSpeed(downloadSpeed)}</span>}
+                {uploadSpeed > 0 && <span>↑ {formatSpeed(uploadSpeed)}</span>}
+                <span>👥 {peers}</span>
               </div>
             )}
 

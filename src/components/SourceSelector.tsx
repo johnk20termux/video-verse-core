@@ -45,9 +45,10 @@ const SourceSelector = ({ sources, onSelectSource, onClose }: SourceSelectorProp
             <Play className="w-4 h-4 flex-shrink-0" />
             <div className="flex flex-col items-start text-left flex-1">
               <div className="font-medium">{source.title}</div>
-              <div className="text-xs text-muted-foreground">
-                {source.quality && `${source.quality} • `}
-                {source.addonName}
+              <div className="text-xs text-muted-foreground flex gap-2">
+                {source.quality && <span className="font-semibold text-primary">{source.quality}</span>}
+                {source.seeders && source.seeders > 0 && <span>👤 {source.seeders}</span>}
+                <span>• {source.addonName}</span>
               </div>
             </div>
           </Button>

@@ -7,6 +7,7 @@ export interface StreamSource {
   magnetUri?: string;
   url?: string;
   addonName: string;
+  seeders?: number;
 }
 
 interface AddonStreamResponse {
@@ -17,6 +18,7 @@ interface AddonStreamResponse {
     infoHash?: string;
     magnetUri?: string;
     url?: string;
+    seeders?: number;
   }>;
 }
 
@@ -57,16 +59,19 @@ const fetchAddonStreams = async (
       return [];
     }
 
-    return data.streams
+    const streams = data.streams
       .filter(stream => stream.infoHash || stream.magnetUri || (stream.url?.startsWith("magnet:")))
       .map(stream => ({
         title: stream.title || stream.name || "Unknown Source",
-        quality: stream.quality,
+        quality: extractQuality(stream.title || stream.name || stream.quality),
         infoHash: stream.infoHash,
         magnetUri: stream.magnetUri || (stream.url && stream.url.startsWith("magnet:") ? stream.url : undefined),
         url: stream.url,
         addonName,
+        seeders: stream.seeders || extractSeeders(stream.title || stream.name) || 0,
       }));
+    
+    return sortStreamsByQuality(streams);
   } catch (error) {
     console.error(`Error fetching from addon ${addonName}:`, error);
     return [];
@@ -109,6 +114,57 @@ export const fetchStreamsFromAddons = async (
     console.error("Error fetching streams from addons:", error);
     return [];
   }
+};
+
+/**
+ * Extract quality from title or quality string
+ */
+const extractQuality = (text?: string): string => {
+  if (!text) return "Unknown";
+  
+  const upperText = text.toUpperCase();
+  
+  if (upperText.includes("2160P") || upperText.includes("4K") || upperText.includes("UHD")) return "4K";
+  if (upperText.includes("1080P")) return "1080p";
+  if (upperText.includes("720P")) return "720p";
+  if (upperText.includes("480P")) return "480p";
+  
+  return text;
+};
+
+/**
+ * Extract seeders count from title (format: 👤 123)
+ */
+const extractSeeders = (text?: string): number => {
+  if (!text) return 0;
+  
+  const match = text.match(/👤\s*(\d+)/);
+  return match ? parseInt(match[1], 10) : 0;
+};
+
+/**
+ * Sort streams by quality (4K first) then by seeders
+ */
+const sortStreamsByQuality = (streams: StreamSource[]): StreamSource[] => {
+  const qualityOrder: { [key: string]: number } = {
+    "4K": 4,
+    "1080p": 3,
+    "720p": 2,
+    "480p": 1,
+  };
+  
+  return streams.sort((a, b) => {
+    // First sort by quality
+    const qualityA = qualityOrder[a.quality || ""] || 0;
+    const qualityB = qualityOrder[b.quality || ""] || 0;
+    
+    if (qualityA !== qualityB) {
+      return qualityB - qualityA; // Higher quality first
+    }
+    
+    // Then by seeders
+    return (b.seeders || 0) - (a.seeders || 0);
+  });
 };
 
 /**

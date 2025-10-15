@@ -28,6 +28,7 @@ const App = () => (
             <Route path="/" element={<ProtectedRoute><Navigation /><Home /></ProtectedRoute>} />
             <Route path="/browse" element={<ProtectedRoute><Navigation /><Browse /></ProtectedRoute>} />
             <Route path="/movie/:id" element={<ProtectedRoute><Navigation /><MovieDetail /></ProtectedRoute>} />
+            <Route path="/series/:id" element={<ProtectedRoute><Navigation /><MovieDetail /></ProtectedRoute>} />
             <Route path="/watchlist" element={<ProtectedRoute><Navigation /><Watchlist /></ProtectedRoute>} />
             <Route path="/addons" element={<ProtectedRoute><Navigation /><Addons /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />

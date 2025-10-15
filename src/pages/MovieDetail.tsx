@@ -13,6 +13,9 @@ import SourceSelector from "@/components/SourceSelector";
 
 const MovieDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const location = window.location;
+  const mediaType = location.pathname.includes("/series/") ? "tv" : "movie";
+  
   const [isInWatchlist, setIsInWatchlist] = useState(false);
   const [isWatched, setIsWatched] = useState(false);
   const [isPlayerVisible, setIsPlayerVisible] = useState(false);
@@ -20,9 +23,15 @@ const MovieDetail = () => {
   const [showSourceSelector, setShowSourceSelector] = useState(false);
   const [availableSources, setAvailableSources] = useState<StreamSource[]>([]);
 
-  const { data: movie, isLoading } = useQuery({
-    queryKey: ["movie", id],
-    queryFn: () => tmdbService.getMovieDetails(Number(id)),
+  const { data: content, isLoading } = useQuery({
+    queryKey: [mediaType, id],
+    queryFn: async () => {
+      if (mediaType === "movie") {
+        return await tmdbService.getMovieDetails(Number(id));
+      } else {
+        return await tmdbService.getSeriesDetails(Number(id));
+      }
+    },
   });
 
   // Load watchlist status from Supabase
@@ -49,7 +58,10 @@ const MovieDetail = () => {
 
   const toggleWatchlist = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !movie) return;
+    if (!user || !content) return;
+
+    const title = (content as any).title || (content as any).name;
+    const poster = (content as any).poster_path;
 
     if (isInWatchlist) {
       const { error } = await supabase
@@ -68,8 +80,8 @@ const MovieDetail = () => {
         .insert({
           user_id: user.id,
           movie_id: Number(id),
-          movie_title: movie.title,
-          movie_poster: movie.poster_path,
+          movie_title: title,
+          movie_poster: poster,
           watched: false,
         });
 
@@ -97,28 +109,32 @@ const MovieDetail = () => {
   };
 
   const handlePlay = async () => {
-    if (!movie) return;
+    if (!content) return;
 
-    const imdbId = movie.imdb_id || `tt${id}`;
+    const imdbId = (content as any).imdb_id || (content as any).external_ids?.imdb_id || `tt${id}`;
+    const title = (content as any).title || (content as any).name;
     
     toast.loading("Finding sources from addons...");
     
     // Fetch streams from user's addons
-    const addonStreams = await fetchStreamsFromAddons("movie", imdbId);
+    const addonStreams = await fetchStreamsFromAddons(mediaType === "tv" ? "series" : "movie", imdbId);
     
-    // Also fetch from YTS as fallback
-    const ytsMovie = await searchYTSByIMDB(imdbId);
+    // Also fetch from YTS as fallback (movies only)
     const ytsSources: StreamSource[] = [];
     
-    if (ytsMovie?.torrents) {
-      ytsSources.push(
-        ...ytsMovie.torrents.map(t => ({
-          title: `${movie.title} - ${t.quality}`,
-          quality: t.quality,
-          infoHash: t.hash,
-          addonName: "YTS",
-        }))
-      );
+    if (mediaType === "movie") {
+      const ytsMovie = await searchYTSByIMDB(imdbId);
+      if (ytsMovie?.torrents) {
+        ytsSources.push(
+          ...ytsMovie.torrents.map(t => ({
+            title: `${title} - ${t.quality}`,
+            quality: t.quality,
+            infoHash: t.hash,
+            addonName: "YTS",
+            seeders: 0,
+          }))
+        );
+      }
     }
 
     const allSources = [...addonStreams, ...ytsSources];
@@ -141,14 +157,15 @@ const MovieDetail = () => {
   };
 
   const selectSource = (source: StreamSource) => {
-    if (!movie) return;
+    if (!content) return;
 
+    const title = (content as any).title || (content as any).name;
     let magnet: string;
 
     if (source.magnetUri) {
       magnet = source.magnetUri;
     } else if (source.infoHash) {
-      magnet = generateMagnetFromHash(source.infoHash, movie.title);
+      magnet = generateMagnetFromHash(source.infoHash, title);
     } else if (source.url) {
       magnet = source.url;
     } else {
@@ -166,9 +183,19 @@ const MovieDetail = () => {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
 
-  if (!movie) {
-    return <div className="min-h-screen flex items-center justify-center">Movie not found</div>;
+  if (!content) {
+    return <div className="min-h-screen flex items-center justify-center">
+      {mediaType === "movie" ? "Movie" : "Series"} not found
+    </div>;
   }
+
+  const title = (content as any).title || (content as any).name;
+  const releaseDate = (content as any).release_date || (content as any).first_air_date;
+  const runtime = (content as any).runtime;
+  const voteAverage = (content as any).vote_average;
+  const overview = (content as any).overview;
+  const genres = (content as any).genres;
+  const backdropPath = (content as any).backdrop_path;
 
   return (
     <div className="min-h-screen">
@@ -178,30 +205,30 @@ const MovieDetail = () => {
         <div
           className="absolute inset-0 bg-cover bg-center opacity-30"
           style={{
-            backgroundImage: movie.backdrop_path
-              ? `url(https://image.tmdb.org/t/p/original${movie.backdrop_path})`
+            backgroundImage: backdropPath
+              ? `url(https://image.tmdb.org/t/p/original${backdropPath})`
               : undefined,
           }}
         />
         
         <div className="container mx-auto px-4 pb-12 relative z-10">
           <div className="max-w-4xl">
-            <h1 className="text-5xl font-bold mb-4">{movie.title}</h1>
+            <h1 className="text-5xl font-bold mb-4">{title}</h1>
             
             <div className="flex items-center gap-6 mb-6 text-sm">
               <div className="flex items-center gap-2">
                 <Star className="w-5 h-5 text-accent fill-accent" />
-                <span className="font-semibold">{movie.vote_average.toFixed(1)}</span>
+                <span className="font-semibold">{voteAverage?.toFixed(1)}</span>
               </div>
               
-              {movie.runtime && (
+              {runtime && (
                 <div className="flex items-center gap-2">
                   <Clock className="w-5 h-5 text-muted-foreground" />
-                  <span>{movie.runtime} min</span>
+                  <span>{runtime} min</span>
                 </div>
               )}
               
-              <span>{new Date(movie.release_date).getFullYear()}</span>
+              <span>{new Date(releaseDate).getFullYear()}</span>
             </div>
 
             <div className="flex items-center gap-4 mb-6">
@@ -233,9 +260,9 @@ const MovieDetail = () => {
               </Button>
             </div>
 
-            {movie.genres && (
+            {genres && (
               <div className="flex gap-2 mb-6">
-                {movie.genres.map((genre) => (
+                {genres.map((genre: any) => (
                   <span
                     key={genre.id}
                     className="px-3 py-1 rounded-full bg-secondary text-sm"
@@ -264,7 +291,7 @@ const MovieDetail = () => {
       {isPlayerVisible && magnetLink && (
         <section className="container mx-auto px-4 py-8">
           <div className="max-w-6xl mx-auto">
-            <VideoPlayer magnetLink={magnetLink} title={movie.title} />
+            <VideoPlayer magnetLink={magnetLink} title={title} />
           </div>
         </section>
       )}
@@ -273,7 +300,7 @@ const MovieDetail = () => {
       <section className="container mx-auto px-4 py-12">
         <div className="max-w-4xl">
           <h2 className="text-2xl font-bold mb-4">Overview</h2>
-          <p className="text-muted-foreground leading-relaxed">{movie.overview}</p>
+          <p className="text-muted-foreground leading-relaxed">{overview}</p>
         </div>
       </section>
     </div>

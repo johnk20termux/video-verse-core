@@ -1,4 +1,4 @@
-import { Movie, Genre } from "@/types/movie";
+import { Movie, Genre, Series } from "@/types/movie";
 // @ts-ignore
 import freekeys from "freekeys";
 
@@ -86,6 +86,47 @@ export const tmdbService = {
       return data.results || [];
     } catch (error) {
       console.error("Error fetching movies by genre:", error);
+      return [];
+    }
+  },
+
+  async getTrendingSeries(): Promise<Series[]> {
+    try {
+      const apiKey = await getApiKey();
+      const response = await fetch(
+        `${BASE_URL}/trending/tv/week?api_key=${apiKey}`
+      );
+      const data = await response.json();
+      return data.results || [];
+    } catch (error) {
+      console.error("Error fetching trending series:", error);
+      return [];
+    }
+  },
+
+  async getSeriesDetails(id: number): Promise<Series | null> {
+    try {
+      const apiKey = await getApiKey();
+      const response = await fetch(
+        `${BASE_URL}/tv/${id}?api_key=${apiKey}&append_to_response=external_ids`
+      );
+      return await response.json();
+    } catch (error) {
+      console.error("Error fetching series details:", error);
+      return null;
+    }
+  },
+
+  async searchSeries(query: string): Promise<Series[]> {
+    try {
+      const apiKey = await getApiKey();
+      const response = await fetch(
+        `${BASE_URL}/search/tv?api_key=${apiKey}&query=${encodeURIComponent(query)}`
+      );
+      const data = await response.json();
+      return data.results || [];
+    } catch (error) {
+      console.error("Error searching series:", error);
       return [];
     }
   },
