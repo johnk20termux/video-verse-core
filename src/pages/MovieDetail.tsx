@@ -3,44 +3,96 @@ import { useQuery } from "@tanstack/react-query";
 import { tmdbService } from "@/services/tmdb";
 import { Button } from "@/components/ui/button";
 import { Play, Bookmark, BookmarkCheck, Star, Clock } from "lucide-react";
-import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import VideoPlayer from "@/components/VideoPlayer";
 import { searchYTSByIMDB, generateMagnetLink } from "@/services/yts";
+import { fetchStreamsFromAddons, generateMagnetFromHash, StreamSource } from "@/services/addons";
+import { supabase } from "@/integrations/supabase/client";
+import SourceSelector from "@/components/SourceSelector";
 
 const MovieDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const [watchlist, setWatchlist] = useLocalStorage<number[]>("watchlist", []);
-  const [watched, setWatched] = useLocalStorage<number[]>("watched", []);
+  const [isInWatchlist, setIsInWatchlist] = useState(false);
+  const [isWatched, setIsWatched] = useState(false);
   const [isPlayerVisible, setIsPlayerVisible] = useState(false);
   const [magnetLink, setMagnetLink] = useState<string | null>(null);
+  const [showSourceSelector, setShowSourceSelector] = useState(false);
+  const [availableSources, setAvailableSources] = useState<StreamSource[]>([]);
 
   const { data: movie, isLoading } = useQuery({
     queryKey: ["movie", id],
     queryFn: () => tmdbService.getMovieDetails(Number(id)),
   });
 
-  const isInWatchlist = watchlist.includes(Number(id));
-  const isWatched = watched.includes(Number(id));
+  // Load watchlist status from Supabase
+  useEffect(() => {
+    const loadWatchlistStatus = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
-  const toggleWatchlist = () => {
+      const { data } = await supabase
+        .from("watchlist")
+        .select("watched")
+        .eq("movie_id", Number(id))
+        .eq("user_id", user.id)
+        .single();
+
+      if (data) {
+        setIsInWatchlist(true);
+        setIsWatched(data.watched);
+      }
+    };
+
+    loadWatchlistStatus();
+  }, [id]);
+
+  const toggleWatchlist = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !movie) return;
+
     if (isInWatchlist) {
-      setWatchlist(watchlist.filter((movieId) => movieId !== Number(id)));
-      toast.success("Removed from watchlist");
+      const { error } = await supabase
+        .from("watchlist")
+        .delete()
+        .eq("movie_id", Number(id))
+        .eq("user_id", user.id);
+
+      if (!error) {
+        setIsInWatchlist(false);
+        toast.success("Removed from watchlist");
+      }
     } else {
-      setWatchlist([...watchlist, Number(id)]);
-      toast.success("Added to watchlist");
+      const { error } = await supabase
+        .from("watchlist")
+        .insert({
+          user_id: user.id,
+          movie_id: Number(id),
+          movie_title: movie.title,
+          movie_poster: movie.poster_path,
+          watched: false,
+        });
+
+      if (!error) {
+        setIsInWatchlist(true);
+        toast.success("Added to watchlist");
+      }
     }
   };
 
-  const toggleWatched = () => {
-    if (isWatched) {
-      setWatched(watched.filter((movieId) => movieId !== Number(id)));
-      toast.success("Marked as unwatched");
-    } else {
-      setWatched([...watched, Number(id)]);
-      toast.success("Marked as watched");
+  const toggleWatched = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from("watchlist")
+      .update({ watched: !isWatched })
+      .eq("movie_id", Number(id))
+      .eq("user_id", user.id);
+
+    if (!error) {
+      setIsWatched(!isWatched);
+      toast.success(isWatched ? "Marked as unwatched" : "Marked as watched");
     }
   };
 
@@ -49,23 +101,65 @@ const MovieDetail = () => {
 
     const imdbId = movie.imdb_id || `tt${id}`;
     
-    toast.loading("Finding torrent stream...");
+    toast.loading("Finding sources from addons...");
     
+    // Fetch streams from user's addons
+    const addonStreams = await fetchStreamsFromAddons("movie", imdbId);
+    
+    // Also fetch from YTS as fallback
     const ytsMovie = await searchYTSByIMDB(imdbId);
+    const ytsSources: StreamSource[] = [];
     
-    if (!ytsMovie || !ytsMovie.torrents || ytsMovie.torrents.length === 0) {
-      toast.error("No torrents available for this movie");
+    if (ytsMovie?.torrents) {
+      ytsSources.push(
+        ...ytsMovie.torrents.map(t => ({
+          title: `${movie.title} - ${t.quality}`,
+          quality: t.quality,
+          infoHash: t.hash,
+          addonName: "YTS",
+        }))
+      );
+    }
+
+    const allSources = [...addonStreams, ...ytsSources];
+    
+    toast.dismiss();
+
+    if (allSources.length === 0) {
+      toast.error("No sources available. Try adding some addons!");
       return;
     }
 
-    const torrent = ytsMovie.torrents.find(t => t.quality === "1080p") || 
-                    ytsMovie.torrents.find(t => t.quality === "720p") ||
-                    ytsMovie.torrents[0];
+    if (allSources.length === 1) {
+      // Auto-play if only one source
+      selectSource(allSources[0]);
+    } else {
+      // Show source selector
+      setAvailableSources(allSources);
+      setShowSourceSelector(true);
+    }
+  };
 
-    const magnet = generateMagnetLink(torrent.hash, movie.title);
+  const selectSource = (source: StreamSource) => {
+    if (!movie) return;
+
+    let magnet: string;
+
+    if (source.magnetUri) {
+      magnet = source.magnetUri;
+    } else if (source.infoHash) {
+      magnet = generateMagnetFromHash(source.infoHash, movie.title);
+    } else if (source.url) {
+      magnet = source.url;
+    } else {
+      toast.error("Invalid source");
+      return;
+    }
+
     setMagnetLink(magnet);
     setIsPlayerVisible(true);
-    toast.dismiss();
+    setShowSourceSelector(false);
+    toast.success(`Playing from ${source.addonName}`);
   };
 
   if (isLoading) {
@@ -154,6 +248,17 @@ const MovieDetail = () => {
           </div>
         </div>
       </section>
+
+      {/* Source Selector */}
+      {showSourceSelector && (
+        <section className="container mx-auto px-4 py-8">
+          <SourceSelector
+            sources={availableSources}
+            onSelectSource={selectSource}
+            onClose={() => setShowSourceSelector(false)}
+          />
+        </section>
+      )}
 
       {/* Video Player Section */}
       {isPlayerVisible && magnetLink && (
