@@ -116,6 +116,64 @@ export const fetchStreamsFromAddons = async (
   }
 };
 
+export interface SubtitleSource {
+  lang: string;
+  url: string;
+  label?: string;
+  addonName: string;
+}
+
+interface AddonSubtitlesResponse {
+  subtitles?: Array<{
+    url: string;
+    lang?: string;
+    id?: string;
+    name?: string;
+  }>;
+}
+
+export const fetchSubtitlesFromAddons = async (
+  type: "movie" | "series",
+  imdbId: string
+): Promise<SubtitleSource[]> => {
+  try {
+    const { data: addons, error } = await supabase
+      .from("addons")
+      .select("*")
+      .eq("enabled", true);
+
+    if (error || !addons || addons.length === 0) return [];
+
+    const results = await Promise.all(
+      addons.map(async (addon: any) => {
+        try {
+          const baseUrl = addon.url
+            .trim()
+            .replace(/\/manifest(\.json)?$/i, "")
+            .replace(/\/$/, "");
+          const url = `${baseUrl}/subtitles/${type}/${encodeURIComponent(imdbId)}.json`;
+          const res = await fetch(url, { headers: { Accept: "application/json" } });
+          if (!res.ok) return [];
+          const data: AddonSubtitlesResponse = await res.json();
+          if (!data.subtitles) return [];
+          return data.subtitles.map((s) => ({
+            lang: s.lang || s.id || "en",
+            url: s.url,
+            label: s.name || s.lang || s.id || addon.name,
+            addonName: addon.name,
+          }));
+        } catch (e) {
+          return [];
+        }
+      })
+    );
+
+    return results.flat();
+  } catch (e) {
+    return [];
+  }
+};
+
 /**
  * Extract quality from title or quality string
  */
@@ -172,16 +230,12 @@ const sortStreamsByQuality = (streams: StreamSource[]): StreamSource[] => {
  */
 export const generateMagnetFromHash = (hash: string, name: string): string => {
   const trackers = [
-    "udp://open.demonii.com:1337/announce",
-    "udp://tracker.openbittorrent.com:80",
-    "udp://tracker.coppersurfer.tk:6969",
-    "udp://glotorrents.pw:6969/announce",
-    "udp://tracker.opentrackr.org:1337/announce",
-    "udp://torrent.gresille.org:80/announce",
-    "udp://p4p.arenabg.com:1337",
-    "udp://tracker.leechers-paradise.org:6969",
+    "wss://tracker.openwebtorrent.com",
+    "wss://tracker.btorrent.xyz",
+    "wss://tracker.fastcast.nz",
+    "wss://tracker.webtorrent.dev",
   ];
 
-  const trackersParam = trackers.map(t => `&tr=${encodeURIComponent(t)}`).join('');
+  const trackersParam = trackers.map((t) => `&tr=${encodeURIComponent(t)}`).join("");
   return `magnet:?xt=urn:btih:${hash}&dn=${encodeURIComponent(name)}${trackersParam}`;
 };

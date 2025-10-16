@@ -6,9 +6,10 @@ import { toast } from "sonner";
 interface VideoPlayerProps {
   magnetLink: string;
   title: string;
+  subtitles?: { label?: string; lang: string; url: string }[];
 }
 
-const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
+const VideoPlayer = ({ magnetLink, title, subtitles }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const clientRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -20,6 +21,59 @@ const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
   const [peers, setPeers] = useState(0);
   const [downloaded, setDownloaded] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [processedSubtitles, setProcessedSubtitles] = useState<{ label?: string; lang: string; url: string }[]>([]);
+  const [activeSubtitleIndex, setActiveSubtitleIndex] = useState<number>(-1);
+  const [loadingHint, setLoadingHint] = useState<string | null>(null);
+
+  const convertSrtToVtt = (srt: string) => {
+    return srt
+      .replace(/\r/g, "")
+      .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2");
+  };
+
+  useEffect(() => {
+    let revoke: string[] = [];
+    const process = async () => {
+      if (!subtitles || subtitles.length === 0) {
+        setProcessedSubtitles([]);
+        setActiveSubtitleIndex(-1);
+        return;
+      }
+      const results = await Promise.all(
+        subtitles.map(async (s) => {
+          try {
+            if (s.url.toLowerCase().endsWith(".srt")) {
+              const res = await fetch(s.url);
+              const text = await res.text();
+              const vtt = `WEBVTT\n\n${convertSrtToVtt(text)}`;
+              const blob = new Blob([vtt], { type: "text/vtt" });
+              const url = URL.createObjectURL(blob);
+              revoke.push(url);
+              return { label: s.label, lang: s.lang, url };
+            }
+            return s;
+          } catch {
+            return s;
+          }
+        })
+      );
+      setProcessedSubtitles(results);
+      setActiveSubtitleIndex(-1);
+    };
+    process();
+    return () => revoke.forEach((u) => URL.revokeObjectURL(u));
+  }, [subtitles]);
+
+  useEffect(() => {
+    if (isLoading) {
+      const t = setTimeout(() => {
+        setLoadingHint("No WebRTC peers yet. If it takes too long, try a different source or lower quality.");
+      }, 8000);
+      return () => clearTimeout(t);
+    } else {
+      setLoadingHint(null);
+    }
+  }, [isLoading]);
 
   useEffect(() => {
     if (!magnetLink || !window.WebTorrent) {
@@ -35,7 +89,12 @@ const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
 
     console.log("Adding torrent:", magnetLink);
 
-    client.add(magnetLink, (torrent: any) => {
+    client.add(magnetLink, { announce: [
+      'wss://tracker.openwebtorrent.com',
+      'wss://tracker.btorrent.xyz',
+      'wss://tracker.fastcast.nz',
+      'wss://tracker.webtorrent.dev'
+    ] }, (torrent: any) => {
       console.log("Torrent added:", torrent.name);
       
       const file = torrent.files.find((file: any) => 
@@ -54,7 +113,7 @@ const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
 
       console.log("Video file found:", file.name);
 
-      file.appendTo(videoRef.current!, (err: any) => {
+      file.renderTo(videoRef.current!, { autoplay: true }, (err: any) => {
         if (err) {
           console.error("Error appending video:", err);
           setError(err.message);
@@ -147,10 +206,21 @@ const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
       <video
         ref={videoRef}
         className="w-full h-full"
+        crossOrigin="anonymous"
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         controls={false}
-      />
+      >
+        {processedSubtitles.map((s, idx) => (
+          <track
+            key={idx}
+            kind="subtitles"
+            srcLang={s.lang}
+            label={s.label || s.lang.toUpperCase()}
+            src={s.url}
+          />
+        ))}
+      </video>
       
       {isLoading && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90">
@@ -174,6 +244,9 @@ const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
               </div>
             </div>
           )}
+          {loadingHint && (
+            <p className="text-white/70 text-xs mt-2 text-center max-w-xs">{loadingHint}</p>
+          )}
         </div>
       )}
 
@@ -196,6 +269,27 @@ const VideoPlayer = ({ magnetLink, title }: VideoPlayerProps) => {
               className="text-white hover:text-primary"
             >
               {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (!videoRef.current) return;
+                const tracks = videoRef.current.textTracks;
+                for (let i = 0; i < tracks.length; i++) tracks[i].mode = 'disabled';
+                if (processedSubtitles.length === 0) return;
+                const next = activeSubtitleIndex + 1;
+                if (next >= processedSubtitles.length) {
+                  setActiveSubtitleIndex(-1);
+                  return;
+                }
+                tracks[next].mode = 'showing';
+                setActiveSubtitleIndex(next);
+              }}
+              className="text-white hover:text-primary"
+            >
+              <span className="text-xs font-semibold">CC</span>
             </Button>
 
             {(downloadSpeed > 0 || uploadSpeed > 0) && (

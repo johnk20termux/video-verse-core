@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import VideoPlayer from "@/components/VideoPlayer";
 import { searchYTSByIMDB, generateMagnetLink } from "@/services/yts";
-import { fetchStreamsFromAddons, generateMagnetFromHash, StreamSource } from "@/services/addons";
+import { fetchStreamsFromAddons, generateMagnetFromHash, StreamSource, fetchSubtitlesFromAddons } from "@/services/addons";
 import { supabase } from "@/integrations/supabase/client";
 import SourceSelector from "@/components/SourceSelector";
 
@@ -22,6 +22,7 @@ const MovieDetail = () => {
   const [magnetLink, setMagnetLink] = useState<string | null>(null);
   const [showSourceSelector, setShowSourceSelector] = useState(false);
   const [availableSources, setAvailableSources] = useState<StreamSource[]>([]);
+  const [subtitles, setSubtitles] = useState<{ label?: string; lang: string; url: string }[]>([]);
 
   const { data: content, isLoading } = useQuery({
     queryKey: [mediaType, id],
@@ -176,6 +177,10 @@ const MovieDetail = () => {
     setMagnetLink(magnet);
     setIsPlayerVisible(true);
     setShowSourceSelector(false);
+    const imdbIdSel = (content as any).imdb_id || (content as any).external_ids?.imdb_id || `tt${id}`;
+    fetchSubtitlesFromAddons(mediaType === "tv" ? "series" : "movie", imdbIdSel)
+      .then(setSubtitles)
+      .catch(() => setSubtitles([]));
     toast.success(`Playing from ${source.addonName}`);
   };
 
@@ -291,7 +296,7 @@ const MovieDetail = () => {
       {isPlayerVisible && magnetLink && (
         <section className="container mx-auto px-4 py-8">
           <div className="max-w-6xl mx-auto">
-            <VideoPlayer magnetLink={magnetLink} title={title} />
+            <VideoPlayer magnetLink={magnetLink} title={title} subtitles={subtitles} />
           </div>
         </section>
       )}
