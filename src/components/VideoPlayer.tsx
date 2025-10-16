@@ -97,21 +97,26 @@ const VideoPlayer = ({ magnetLink, title, subtitles }: VideoPlayerProps) => {
     ] }, (torrent: any) => {
       console.log("Torrent added:", torrent.name);
       
-      const file = torrent.files.find((file: any) => 
-        file.name.endsWith('.mp4') || 
-        file.name.endsWith('.mkv') || 
-        file.name.endsWith('.avi') ||
-        file.name.endsWith('.webm')
-      );
+      // Prefer browser-playable files only (MP4/WebM) and pick the largest
+      const playable = torrent.files
+        .filter((file: any) => /\.(mp4|webm)$/i.test(file.name))
+        .sort((a: any, b: any) => (b.length || 0) - (a.length || 0));
+
+      const file = playable[0];
 
       if (!file) {
-        setError("No video file found in torrent");
+        setError("No browser-playable video found in this source (need MP4/WebM)");
         setIsLoading(false);
-        toast.error("No playable video file found");
+        toast.error("Source not compatible with browser. Try another (MP4/WebM)");
         return;
       }
 
       console.log("Video file found:", file.name);
+
+      // Ensure autoplay works on most browsers
+      if (videoRef.current) {
+        videoRef.current.muted = true;
+      }
 
       file.renderTo(videoRef.current!, { autoplay: true }, (err: any) => {
         if (err) {
@@ -207,8 +212,15 @@ const VideoPlayer = ({ magnetLink, title, subtitles }: VideoPlayerProps) => {
         ref={videoRef}
         className="w-full h-full"
         crossOrigin="anonymous"
+        playsInline
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
+        onError={(e) => {
+          const mediaError = (e.currentTarget as HTMLVideoElement).error as any;
+          const msg = mediaError?.message || "Failed to load because no supported source was found";
+          setError(msg);
+          toast.error("Browser can't play this source");
+        }}
         controls={false}
       >
         {processedSubtitles.map((s, idx) => (
