@@ -20,6 +20,7 @@ const MovieDetail = () => {
   const [isWatched, setIsWatched] = useState(false);
   const [isPlayerVisible, setIsPlayerVisible] = useState(false);
   const [magnetLink, setMagnetLink] = useState<string | null>(null);
+  const [fileIndex, setFileIndex] = useState<number | undefined>(undefined);
   const [showSourceSelector, setShowSourceSelector] = useState(false);
   const [availableSources, setAvailableSources] = useState<StreamSource[]>([]);
   const [subtitles, setSubtitles] = useState<{ label?: string; lang: string; url: string }[]>([]);
@@ -175,6 +176,7 @@ const MovieDetail = () => {
     }
 
     setMagnetLink(magnet);
+    setFileIndex(source.fileIdx);
     setIsPlayerVisible(true);
     setShowSourceSelector(false);
     const imdbIdSel = (content as any).imdb_id || (content as any).external_ids?.imdb_id || `tt${id}`;
@@ -296,7 +298,7 @@ const MovieDetail = () => {
       {isPlayerVisible && magnetLink && (
         <section className="container mx-auto px-4 py-8">
           <div className="max-w-6xl mx-auto">
-            <VideoPlayer magnetLink={magnetLink} title={title} subtitles={subtitles} />
+            <VideoPlayer magnetLink={magnetLink} title={title} subtitles={subtitles} fileIndex={fileIndex} />
           </div>
         </section>
       )}

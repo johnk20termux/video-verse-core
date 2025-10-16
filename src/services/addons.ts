@@ -8,6 +8,8 @@ export interface StreamSource {
   url?: string;
   addonName: string;
   seeders?: number;
+  fileIdx?: number;
+  filename?: string;
 }
 
 interface AddonStreamResponse {
@@ -19,6 +21,8 @@ interface AddonStreamResponse {
     magnetUri?: string;
     url?: string;
     seeders?: number;
+    fileIdx?: number;
+    behaviorHints?: { filename?: string };
   }>;
 }
 
@@ -69,6 +73,8 @@ const fetchAddonStreams = async (
         url: stream.url,
         addonName,
         seeders: stream.seeders || extractSeeders(stream.title || stream.name) || 0,
+        fileIdx: (stream as any).fileIdx,
+        filename: (stream as any).behaviorHints?.filename,
       }));
     
     return sortStreamsByQuality(streams);

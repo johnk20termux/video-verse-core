@@ -7,9 +7,10 @@ interface VideoPlayerProps {
   magnetLink: string;
   title: string;
   subtitles?: { label?: string; lang: string; url: string }[];
+  fileIndex?: number;
 }
 
-const VideoPlayer = ({ magnetLink, title, subtitles }: VideoPlayerProps) => {
+const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const clientRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,6 +25,7 @@ const VideoPlayer = ({ magnetLink, title, subtitles }: VideoPlayerProps) => {
   const [processedSubtitles, setProcessedSubtitles] = useState<{ label?: string; lang: string; url: string }[]>([]);
   const [activeSubtitleIndex, setActiveSubtitleIndex] = useState<number>(-1);
   const [loadingHint, setLoadingHint] = useState<string | null>(null);
+  const [useWebtor, setUseWebtor] = useState(false);
 
   const convertSrtToVtt = (srt: string) => {
     return srt
@@ -97,17 +99,26 @@ const VideoPlayer = ({ magnetLink, title, subtitles }: VideoPlayerProps) => {
     ] }, (torrent: any) => {
       console.log("Torrent added:", torrent.name);
       
-      // Prefer browser-playable files only (MP4/WebM) and pick the largest
+      // Try file by index (from addon) first
+      let file: any | undefined;
+      if (typeof fileIndex === 'number' && torrent.files[fileIndex]) {
+        file = torrent.files[fileIndex];
+      }
+
+      // If not provided or not browser-playable, prefer browser-playable files only (MP4/WebM) and pick the largest
       const playable = torrent.files
-        .filter((file: any) => /\.(mp4|webm)$/i.test(file.name))
+        .filter((f: any) => /\.(mp4|webm)$/i.test(f.name))
         .sort((a: any, b: any) => (b.length || 0) - (a.length || 0));
 
-      const file = playable[0];
+      if (!file || !/\.(mp4|webm)$/i.test(file.name)) {
+        file = playable[0];
+      }
 
       if (!file) {
         setError("No browser-playable video found in this source (need MP4/WebM)");
         setIsLoading(false);
-        toast.error("Source not compatible with browser. Try another (MP4/WebM)");
+        setUseWebtor(true);
+        toast.error("Source not compatible with browser. Switching to fallback player...");
         return;
       }
 
@@ -195,6 +206,23 @@ const VideoPlayer = ({ magnetLink, title, subtitles }: VideoPlayerProps) => {
     return gb >= 1 ? `${gb.toFixed(2)} GB` : `${mb.toFixed(0)} MB`;
   };
 
+  const buildWebtorUrl = (magnet: string, title: string) => {
+    // Webtor embed via URL hash
+    return `https://webtor.io/#${magnet}&title=${encodeURIComponent(title)}`;
+  };
+  if (useWebtor) {
+    return (
+      <div className="relative w-full aspect-video rounded-lg overflow-hidden">
+        <iframe
+          src={buildWebtorUrl(magnetLink, title)}
+          className="w-full h-full"
+          allow="autoplay; fullscreen; encrypted-media"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="w-full aspect-video bg-gradient-to-br from-background to-accent/10 rounded-lg flex items-center justify-center">
@@ -219,7 +247,9 @@ const VideoPlayer = ({ magnetLink, title, subtitles }: VideoPlayerProps) => {
           const mediaError = (e.currentTarget as HTMLVideoElement).error as any;
           const msg = mediaError?.message || "Failed to load because no supported source was found";
           setError(msg);
-          toast.error("Browser can't play this source");
+          setIsLoading(false);
+          setUseWebtor(true);
+          toast.error("Browser can't play this source. Switching to fallback player...");
         }}
         controls={false}
       >
