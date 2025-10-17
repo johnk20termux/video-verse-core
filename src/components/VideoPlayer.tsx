@@ -206,18 +206,34 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex }: VideoPlayerPro
     return gb >= 1 ? `${gb.toFixed(2)} GB` : `${mb.toFixed(0)} MB`;
   };
 
-  const buildWebtorUrl = (magnet: string, title: string) => {
-    // Webtor embed via URL hash
-    return `https://webtor.io/#${magnet}&title=${encodeURIComponent(title)}`;
+  const buildWebtorUrl = (magnet: string, title: string, subs?: { label?: string; lang: string; url: string }[]) => {
+    const params = new URLSearchParams();
+    params.set('magnet', magnet);
+    params.set('title', title);
+    params.set('poster-mode', 'false');
+    params.set('imdb-id', '');
+    
+    // Add subtitle tracks if available
+    if (subs && subs.length > 0) {
+      subs.forEach((sub, idx) => {
+        params.set(`subtitle-${idx}`, sub.url);
+        params.set(`subtitle-${idx}-label`, sub.label || sub.lang.toUpperCase());
+        params.set(`subtitle-${idx}-lang`, sub.lang);
+      });
+    }
+    
+    return `https://webtor.io/embed/${encodeURIComponent(magnet)}?${params.toString()}`;
   };
+
   if (useWebtor) {
     return (
-      <div className="relative w-full aspect-video rounded-lg overflow-hidden">
+      <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
         <iframe
-          src={buildWebtorUrl(magnetLink, title)}
-          className="w-full h-full"
-          allow="autoplay; fullscreen; encrypted-media"
+          src={buildWebtorUrl(magnetLink, title, processedSubtitles)}
+          className="w-full h-full border-0"
+          allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           allowFullScreen
+          sandbox="allow-scripts allow-same-origin allow-presentation"
         />
       </div>
     );
