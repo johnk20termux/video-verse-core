@@ -68,19 +68,35 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
   }, [subtitles]);
 
   useEffect(() => {
-    if (isLoading) {
-      const t = setTimeout(() => {
-        setLoadingHint("No WebRTC peers yet. If it takes too long, try a different source or lower quality.");
-      }, 8000);
-      return () => clearTimeout(t);
-    } else {
+    if (!isLoading) {
       setLoadingHint(null);
+      return;
     }
-  }, [isLoading]);
+
+    const hintTimer = setTimeout(() => {
+      setLoadingHint("No WebRTC peers yet. Switching to reliable player if this continues...");
+    }, 6000);
+
+    const fallbackTimer = setTimeout(() => {
+      // If still not started downloading, auto-switch to Webtor for broader codec support
+      if (peers === 0 && progress < 1) {
+        setUseWebtor(true);
+        setIsLoading(false);
+        toast.message("Switching to fallback player for seamless playback");
+      }
+    }, 12000);
+
+    return () => {
+      clearTimeout(hintTimer);
+      clearTimeout(fallbackTimer);
+    };
+  }, [isLoading, peers, progress]);
 
   useEffect(() => {
-    if (!magnetLink || !window.WebTorrent) {
-      setError("WebTorrent not available");
+    if (!magnetLink) return;
+    if (!window.WebTorrent) {
+      setUseWebtor(true);
+      setIsLoading(false);
       return;
     }
 
@@ -152,16 +168,17 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
 
       torrent.on('error', (err: any) => {
         console.error('Torrent error:', err);
-        setError(err.message);
-        toast.error("Streaming error");
+        setUseWebtor(true);
+        setIsLoading(false);
+        toast.error("Switching to fallback player for seamless playback");
       });
     });
 
     client.on('error', (err: any) => {
       console.error('WebTorrent client error:', err);
-      setError(err.message);
+      setUseWebtor(true);
       setIsLoading(false);
-      toast.error("Failed to initialize streaming");
+      toast.error("Switching to fallback player for seamless playback");
     });
 
     return () => {
@@ -235,6 +252,8 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           allowFullScreen
           sandbox="allow-scripts allow-same-origin allow-presentation"
+          loading="lazy"
+          referrerPolicy="no-referrer"
         />
       </div>
     );
@@ -263,7 +282,7 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
         onError={(e) => {
           const mediaError = (e.currentTarget as HTMLVideoElement).error as any;
           const msg = mediaError?.message || "Failed to load because no supported source was found";
-          setError(msg);
+          console.error('Media error:', msg);
           setIsLoading(false);
           setUseWebtor(true);
           toast.error("Browser can't play this source. Switching to fallback player...");
@@ -306,6 +325,17 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
           {loadingHint && (
             <p className="text-white/70 text-xs mt-2 text-center max-w-xs">{loadingHint}</p>
           )}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setUseWebtor(true);
+              setIsLoading(false);
+            }}
+            className="mt-3"
+          >
+            Open reliable player
+          </Button>
         </div>
       )}
 
