@@ -8,9 +8,10 @@ interface VideoPlayerProps {
   title: string;
   subtitles?: { label?: string; lang: string; url: string }[];
   fileIndex?: number;
+  imdbId?: string;
 }
 
-const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex }: VideoPlayerProps) => {
+const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const clientRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -206,12 +207,12 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex }: VideoPlayerPro
     return gb >= 1 ? `${gb.toFixed(2)} GB` : `${mb.toFixed(0)} MB`;
   };
 
-  const buildWebtorUrl = (magnet: string, title: string, subs?: { label?: string; lang: string; url: string }[]) => {
+  const buildWebtorUrl = (magnet: string, title: string, subs?: { label?: string; lang: string; url: string }[], imdb?: string) => {
     const params = new URLSearchParams();
     params.set('magnet', magnet);
     params.set('title', title);
     params.set('poster-mode', 'false');
-    params.set('imdb-id', '');
+    if (imdb) params.set('imdb-id', imdb);
     
     // Add subtitle tracks if available
     if (subs && subs.length > 0) {
@@ -229,7 +230,7 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex }: VideoPlayerPro
     return (
       <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
         <iframe
-          src={buildWebtorUrl(magnetLink, title, processedSubtitles)}
+          src={buildWebtorUrl(magnetLink, title, processedSubtitles, imdbId)}
           className="w-full h-full border-0"
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           allowFullScreen

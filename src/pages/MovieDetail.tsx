@@ -298,7 +298,13 @@ const MovieDetail = () => {
       {isPlayerVisible && magnetLink && (
         <section className="container mx-auto px-4 py-8">
           <div className="max-w-6xl mx-auto">
-            <VideoPlayer magnetLink={magnetLink} title={title} subtitles={subtitles} fileIndex={fileIndex} />
+            <VideoPlayer 
+              magnetLink={magnetLink} 
+              title={title} 
+              subtitles={subtitles} 
+              fileIndex={fileIndex}
+              imdbId={(content as any).imdb_id || (content as any).external_ids?.imdb_id}
+            />
           </div>
         </section>
       )}
