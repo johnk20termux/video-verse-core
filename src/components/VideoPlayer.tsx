@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Play, Pause, Volume2, VolumeX, Maximize } from "lucide-react";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
+import WebtorEmbed from "./players/WebtorEmbed";
 
 interface VideoPlayerProps {
   magnetLink: string;
@@ -246,15 +247,7 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
   if (useWebtor) {
     return (
       <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black">
-        <iframe
-          src={buildWebtorUrl(magnetLink, title, processedSubtitles, imdbId)}
-          className="w-full h-full border-0"
-          allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-          allowFullScreen
-          sandbox="allow-scripts allow-same-origin allow-presentation"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-        />
+        <WebtorEmbed magnet={magnetLink} title={title} subtitles={processedSubtitles} imdbId={imdbId} />
       </div>
     );
   }
