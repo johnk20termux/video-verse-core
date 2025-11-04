@@ -150,8 +150,10 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
       file.renderTo(videoRef.current!, { autoplay: true }, (err: any) => {
         if (err) {
           console.error("Error appending video:", err);
-          setError(err.message);
-          toast.error("Failed to load video");
+          // Seamless fallback like Stremio
+          setUseWebtor(true);
+          setIsLoading(false);
+          toast.error("Switching to cloud player for seamless playback");
           return;
         }
         
@@ -188,6 +190,14 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
       }
     };
   }, [magnetLink, title]);
+
+  // If we switch to the cloud player, immediately tear down the P2P client to avoid races
+  useEffect(() => {
+    if (useWebtor && clientRef.current) {
+      try { clientRef.current.destroy(); } catch {}
+      clientRef.current = null;
+    }
+  }, [useWebtor]);
 
   const togglePlay = () => {
     if (!videoRef.current) return;
