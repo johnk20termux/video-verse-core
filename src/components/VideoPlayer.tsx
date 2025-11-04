@@ -75,17 +75,16 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
     }
 
     const hintTimer = setTimeout(() => {
-      setLoadingHint("No WebRTC peers yet. Switching to reliable player if this continues...");
-    }, 6000);
+      setLoadingHint("No peers yet. Switching to cloud player soon...");
+    }, 3000);
 
     const fallbackTimer = setTimeout(() => {
-      // If still not started downloading, auto-switch to Webtor for broader codec support
       if (peers === 0 && progress < 1) {
         setUseWebtor(true);
         setIsLoading(false);
-        toast.message("Switching to fallback player for seamless playback");
+        toast.message("Switching to cloud player for seamless playback");
       }
-    }, 12000);
+    }, 6000);
 
     return () => {
       clearTimeout(hintTimer);
@@ -113,6 +112,7 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
       'wss://tracker.openwebtorrent.com',
       'wss://tracker.btorrent.xyz',
       'wss://tracker.fastcast.nz',
+      'wss://tracker.webtorrent.io',
       'wss://tracker.webtorrent.dev'
     ] }, (torrent: any) => {
       console.log("Torrent added:", torrent.name);
