@@ -10,9 +10,10 @@ interface VideoPlayerProps {
   subtitles?: { label?: string; lang: string; url: string }[];
   fileIndex?: number;
   imdbId?: string;
+  disableAutoFallback?: boolean;
 }
 
-const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoPlayerProps) => {
+const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId, disableAutoFallback = true }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const clientRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -75,28 +76,36 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
     }
 
     const hintTimer = setTimeout(() => {
-      setLoadingHint("No peers yet. Switching to cloud player soon...");
+      setLoadingHint("Waiting for P2P peers...");
     }, 3000);
 
-    const fallbackTimer = setTimeout(() => {
-      if (peers === 0 && progress < 1) {
-        setUseWebtor(true);
-        setIsLoading(false);
-        toast.message("Switching to cloud player for seamless playback");
-      }
-    }, 6000);
+    let fallbackTimer: any;
+    if (!disableAutoFallback) {
+      fallbackTimer = setTimeout(() => {
+        if (peers === 0 && progress < 1) {
+          setUseWebtor(true);
+          setIsLoading(false);
+          toast.message("Switching to cloud player for seamless playback");
+        }
+      }, 6000);
+    }
 
     return () => {
       clearTimeout(hintTimer);
-      clearTimeout(fallbackTimer);
+      if (fallbackTimer) clearTimeout(fallbackTimer);
     };
   }, [isLoading, peers, progress]);
 
   useEffect(() => {
     if (!magnetLink) return;
     if (!window.WebTorrent) {
-      setUseWebtor(true);
-      setIsLoading(false);
+      if (disableAutoFallback) {
+        setError("P2P streaming isn't supported in this browser. You can use the cloud player instead.");
+        setIsLoading(false);
+      } else {
+        setUseWebtor(true);
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -150,10 +159,14 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
       file.renderTo(videoRef.current!, { autoplay: true }, (err: any) => {
         if (err) {
           console.error("Error appending video:", err);
-          // Seamless fallback like Stremio
-          setUseWebtor(true);
-          setIsLoading(false);
-          toast.error("Switching to cloud player for seamless playback");
+          if (disableAutoFallback) {
+            setError(err.message || "Playback failed");
+            setIsLoading(false);
+          } else {
+            setUseWebtor(true);
+            setIsLoading(false);
+            toast.error("Switching to cloud player for seamless playback");
+          }
           return;
         }
         
@@ -267,7 +280,17 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
       <div className="w-full aspect-video bg-gradient-to-br from-background to-accent/10 rounded-lg flex items-center justify-center">
         <div className="text-center p-8">
           <p className="text-destructive mb-2">Failed to load stream</p>
-          <p className="text-sm text-muted-foreground">{error}</p>
+          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setUseWebtor(true);
+              setIsLoading(false);
+            }}
+          >
+            Open cloud player
+          </Button>
         </div>
       </div>
     );
@@ -287,8 +310,12 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId }: VideoP
           const msg = mediaError?.message || "Failed to load because no supported source was found";
           console.error('Media error:', msg);
           setIsLoading(false);
-          setUseWebtor(true);
-          toast.error("Browser can't play this source. Switching to fallback player...");
+          if (disableAutoFallback) {
+            setError(msg);
+          } else {
+            setUseWebtor(true);
+            toast.error("Browser can't play this source. Switching to cloud player...");
+          }
         }}
         controls={false}
       >
