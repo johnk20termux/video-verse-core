@@ -158,6 +158,29 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId, disableA
 
       file.renderTo(videoRef.current!, { autoplay: true }, (err: any) => {
         if (err) {
+          // Ignore non-fatal AbortError caused by quick play/pause race conditions in some browsers
+          const isAbortError =
+            err.name === "AbortError" ||
+            typeof err.message === "string" && err.message.includes("The play() request was interrupted by a call to pause()");
+
+          if (isAbortError) {
+            console.warn("Non-fatal AbortError during video append, continuing playback", err);
+            setIsLoading(false);
+
+            // Try to resume playback once the element is ready
+            if (videoRef.current) {
+              const playPromise = videoRef.current.play?.();
+              if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch(() => {
+                  /* ignore autoplay rejection */
+                });
+              }
+            }
+
+            toast.success(`${title} ready to stream`);
+            return;
+          }
+
           console.error("Error appending video:", err);
           if (disableAutoFallback) {
             setError(err.message || "Playback failed");
