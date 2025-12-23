@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Loader2, Play, Pause, Volume2, VolumeX, Maximize } from "lucide-react";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
 import WebtorEmbed from "./players/WebtorEmbed";
+import VideoDebugOverlay from "./VideoDebugOverlay";
+
+interface DebugLog {
+  timestamp: Date;
+  level: 'info' | 'warn' | 'error' | 'success';
+  message: string;
+}
 
 interface VideoPlayerProps {
   magnetLink: string;
@@ -29,6 +36,28 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId, disableA
   const [activeSubtitleIndex, setActiveSubtitleIndex] = useState<number>(-1);
   const [loadingHint, setLoadingHint] = useState<string | null>(null);
   const [useWebtor, setUseWebtor] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<DebugLog[]>([]);
+
+  const addLog = useCallback((level: DebugLog['level'], message: string) => {
+    setDebugLogs(prev => [...prev.slice(-50), { timestamp: new Date(), level, message }]);
+  }, []);
+
+  // Safe play helper to avoid AbortError
+  const safePlay = useCallback(async (video: HTMLVideoElement) => {
+    try {
+      // Wait for any pending operations
+      await new Promise(resolve => setTimeout(resolve, 50));
+      if (video.paused && video.readyState >= 2) {
+        await video.play();
+        addLog('success', 'Playback started');
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        addLog('error', `Play failed: ${err.message}`);
+      }
+    }
+  }, [addLog]);
 
   const convertSrtToVtt = (srt: string) => {
     return srt
@@ -98,7 +127,11 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId, disableA
 
   useEffect(() => {
     if (!magnetLink) return;
+    
+    addLog('info', 'Initializing player...');
+    
     if (!window.WebTorrent) {
+      addLog('error', 'WebTorrent not available in this browser');
       if (disableAutoFallback) {
         setError("P2P streaming isn't supported in this browser. You can use the cloud player instead.");
         setIsLoading(false);
@@ -114,8 +147,10 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId, disableA
 
     setIsLoading(true);
     setError(null);
+    setDebugLogs([]);
 
-    console.log("Adding torrent:", magnetLink);
+    addLog('info', 'WebTorrent client created');
+    addLog('info', 'Connecting to trackers...');
 
     client.add(magnetLink, { announce: [
       'wss://tracker.openwebtorrent.com',
@@ -124,12 +159,14 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId, disableA
       'wss://tracker.webtorrent.io',
       'wss://tracker.webtorrent.dev'
     ] }, (torrent: any) => {
-      console.log("Torrent added:", torrent.name);
+      addLog('success', `Torrent metadata received: ${torrent.name}`);
+      addLog('info', `Total files: ${torrent.files.length}`);
       
       // Try file by index (from addon) first
       let file: any | undefined;
       if (typeof fileIndex === 'number' && torrent.files[fileIndex]) {
         file = torrent.files[fileIndex];
+        addLog('info', `Using file at index ${fileIndex}: ${file.name}`);
       }
 
       // If not provided or not browser-playable, prefer browser-playable files only (MP4/WebM) and pick the largest
@@ -137,11 +174,14 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId, disableA
         .filter((f: any) => /\.(mp4|webm)$/i.test(f.name))
         .sort((a: any, b: any) => (b.length || 0) - (a.length || 0));
 
+      addLog('info', `Found ${playable.length} playable video files`);
+
       if (!file || !/\.(mp4|webm)$/i.test(file.name)) {
         file = playable[0];
       }
 
       if (!file) {
+        addLog('error', 'No browser-playable video found (MP4/WebM required)');
         setError("No browser-playable video found in this source (need MP4/WebM)");
         setIsLoading(false);
         setUseWebtor(true);
@@ -149,39 +189,37 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId, disableA
         return;
       }
 
-      console.log("Video file found:", file.name);
+      addLog('success', `Selected: ${file.name} (${(file.length / 1024 / 1024).toFixed(0)} MB)`);
 
       // Ensure autoplay works on most browsers
       if (videoRef.current) {
         videoRef.current.muted = true;
       }
 
-      file.renderTo(videoRef.current!, { autoplay: true }, (err: any) => {
+      addLog('info', 'Rendering video to player...');
+
+      // Use autoplay: false to prevent race conditions, then manually start playback
+      file.renderTo(videoRef.current!, { autoplay: false }, (err: any) => {
         if (err) {
-          // Ignore non-fatal AbortError caused by quick play/pause race conditions in some browsers
+          // Ignore non-fatal AbortError caused by quick play/pause race conditions
           const isAbortError =
             err.name === "AbortError" ||
-            typeof err.message === "string" && err.message.includes("The play() request was interrupted by a call to pause()");
+            (typeof err.message === "string" && err.message.includes("The play() request was interrupted"));
 
           if (isAbortError) {
-            console.warn("Non-fatal AbortError during video append, continuing playback", err);
+            addLog('warn', 'AbortError encountered, resuming playback...');
             setIsLoading(false);
-
-            // Try to resume playback once the element is ready
+            
+            // Use safe play helper
             if (videoRef.current) {
-              const playPromise = videoRef.current.play?.();
-              if (playPromise && typeof playPromise.catch === "function") {
-                playPromise.catch(() => {
-                  /* ignore autoplay rejection */
-                });
-              }
+              safePlay(videoRef.current);
             }
-
+            
             toast.success(`${title} ready to stream`);
             return;
           }
 
-          console.error("Error appending video:", err);
+          addLog('error', `Render error: ${err.message || err}`);
           if (disableAutoFallback) {
             setError(err.message || "Playback failed");
             setIsLoading(false);
@@ -193,8 +231,24 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId, disableA
           return;
         }
         
+        addLog('success', 'Video element ready');
         setIsLoading(false);
+        
+        // Safely start playback after render completes
+        if (videoRef.current) {
+          safePlay(videoRef.current);
+        }
+        
         toast.success(`${title} ready to stream`);
+      });
+
+      // Track peer connections
+      let lastPeerCount = 0;
+      torrent.on('wire', () => {
+        if (torrent.numPeers > lastPeerCount) {
+          addLog('info', `Peer connected (${torrent.numPeers} total)`);
+          lastPeerCount = torrent.numPeers;
+        }
       });
 
       torrent.on('download', () => {
@@ -206,26 +260,37 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId, disableA
       });
 
       torrent.on('error', (err: any) => {
-        console.error('Torrent error:', err);
-        setUseWebtor(true);
-        setIsLoading(false);
-        toast.error("Switching to fallback player for seamless playback");
+        addLog('error', `Torrent error: ${err.message || err}`);
+        if (disableAutoFallback) {
+          setError(err.message || "Torrent error");
+          setIsLoading(false);
+        } else {
+          setUseWebtor(true);
+          setIsLoading(false);
+          toast.error("Switching to fallback player for seamless playback");
+        }
       });
     });
 
     client.on('error', (err: any) => {
-      console.error('WebTorrent client error:', err);
-      setUseWebtor(true);
-      setIsLoading(false);
-      toast.error("Switching to fallback player for seamless playback");
+      addLog('error', `Client error: ${err.message || err}`);
+      if (disableAutoFallback) {
+        setError(err.message || "WebTorrent client error");
+        setIsLoading(false);
+      } else {
+        setUseWebtor(true);
+        setIsLoading(false);
+        toast.error("Switching to fallback player for seamless playback");
+      }
     });
 
     return () => {
+      addLog('info', 'Cleaning up WebTorrent client');
       if (clientRef.current) {
         clientRef.current.destroy();
       }
     };
-  }, [magnetLink, title]);
+  }, [magnetLink, title, addLog, safePlay, disableAutoFallback]);
 
   // If we switch to the cloud player, immediately tear down the P2P client to avoid races
   useEffect(() => {
@@ -321,6 +386,20 @@ const VideoPlayer = ({ magnetLink, title, subtitles, fileIndex, imdbId, disableA
 
   return (
     <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden group">
+      {/* Debug Overlay */}
+      <VideoDebugOverlay
+        isVisible={showDebug}
+        onToggle={() => setShowDebug(!showDebug)}
+        peers={peers}
+        downloadSpeed={downloadSpeed}
+        uploadSpeed={uploadSpeed}
+        progress={progress}
+        downloaded={downloaded}
+        isLoading={isLoading}
+        error={error}
+        magnetLink={magnetLink}
+        logs={debugLogs}
+      />
       <video
         ref={videoRef}
         className="w-full h-full"
